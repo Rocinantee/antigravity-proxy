@@ -13,7 +13,8 @@ namespace Core {
     private:
         static std::string GetTimestamp() {
             auto now = std::time(nullptr);
-            auto tm = *std::localtime(&now);
+            struct tm tm;
+            localtime_s(&tm, &now);
             std::ostringstream oss;
             oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
             return oss.str();
