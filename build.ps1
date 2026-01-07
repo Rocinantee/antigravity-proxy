@@ -223,7 +223,7 @@ Write-Step "生成配置文件..."
 
 $configJson = @{
     "_comment" = "Antigravity-Proxy 配置文件"
-    "_version" = "1.0.0"
+    "_version" = "1.1.0"
     "_build" = @{
         "date" = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         "config" = $Config
@@ -245,6 +245,10 @@ $configJson = @{
     }
     traffic_logging = $false
     child_injection = $true
+    target_processes = @(
+        "language_server_windows",
+        "Antigravity.exe"
+    )
 } | ConvertTo-Json -Depth 4
 
 $configPath = Join-Path $OutputDir "config.json"
@@ -300,6 +304,25 @@ Antigravity-Proxy 是一个基于 MinHook 的 Windows DLL 代理注入工具。
 | timeout.recv | 接收超时 (毫秒) | 5000 |
 | traffic_logging | 是否记录流量日志 | false |
 | child_injection | 是否注入子进程 | true |
+| target_processes | 目标进程列表 (空=全部) | [] |
+
+## v1.1.0 更新说明
+
+### 新增功能
+1. **目标进程过滤**: 可配置 `target_processes` 数组，仅对指定进程注入 DLL
+2. **回环地址 bypass**: `127.0.0.1`、`localhost` 等本地地址不再走代理
+3. **日志中文化**: 所有日志已统一为中文输出
+
+### 配置示例
+```json
+{
+    "target_processes": [
+        "language_server_windows",
+        "Antigravity.exe"
+    ]
+}
+```
+如果 `target_processes` 为空数组或不存在，则注入所有子进程(原行为)。
 
 ## 日志文件
 DLL 运行时会在当前目录生成 `proxy.log` 日志文件，用于调试。
