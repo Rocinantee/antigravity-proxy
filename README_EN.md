@@ -1,0 +1,475 @@
+<p align="center">
+  <img src="img/antigravity_logo.jpg" alt="Antigravity Logo" width="120"/>
+</p>
+
+<h1 align="center">Antigravity-Proxy</h1>
+
+<p align="center">
+  <b>🚀 Force proxy any Windows application without TUN mode</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/yuaotian/antigravity-proxy/actions"><img src="https://github.com/yuaotian/antigravity-proxy/actions/workflows/build.yml/badge.svg" alt="Build Status"/></a>
+  <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-BSD--2--Clause-blue.svg" alt="License"/></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20x86%20%7C%20x64-lightgrey.svg" alt="Platform"/>
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17"/>
+  <img src="https://img.shields.io/badge/hook-MinHook-orange.svg" alt="MinHook"/>
+</p>
+
+<p align="center">
+  <a href="README.md">🇨🇳 中文版</a>
+</p>
+
+---
+
+## 📖 Table of Contents
+
+- [📖 Introduction](#-introduction)
+- [✨ Features](#-features)
+- [🔧 How It Works](#-how-it-works)
+- [🛠️ Build](#️-build)
+- [📝 Usage](#-usage)
+- [🚀 Advanced Usage](#-advanced-usage)
+- [📄 License](#-license)
+- [👤 Author](#-author)
+
+---
+
+## 📖 Introduction
+
+**Antigravity-Proxy** is a process-level forced proxy tool for Windows.
+
+### 🎯 Problem Solved
+
+Have you ever encountered these situations?
+
+- 🔴 Some applications **don't respect system proxy**, requiring Clash TUN mode
+- 🔴 TUN mode proxies **all traffic globally**, affecting local development
+- 🔴 TUN mode requires **administrator privileges**, which some environments don't allow
+
+**Antigravity-Proxy comes to the rescue!** It can:
+
+- ✅ **Proxy only specified applications**, without affecting other traffic
+- ✅ **No TUN mode required**, no administrator privileges needed
+- ✅ **Transparent proxy**, target applications are completely unaware
+
+### 🌟 Core Value
+
+| Traditional Approach | Antigravity-Proxy |
+|---------------------|-------------------|
+| Requires TUN mode | No TUN needed |
+| Global proxy | Precise per-process proxy |
+| Needs admin privileges | Regular user is fine |
+| Complex configuration | Just drop in the DLL |
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---------|-------------|
+| 🔀 **Proxy Redirect** | Intercepts `connect()` calls and redirects to proxy server |
+| 🌐 **FakeIP System** | Intercepts DNS resolution, allocates virtual IPs and maintains mapping |
+| 👶 **Child Injection** | Automatically injects DLL into child processes |
+| ⏱️ **Timeout Control** | Prevents target application from hanging on network issues |
+| 🔄 **Fail-Safe** | Falls back to direct connection on configuration error |
+| 🎯 **Process Filter** | Proxy only specified process list |
+| 📊 **Traffic Monitor** | Optional traffic logging |
+
+### Supported Protocols
+
+- ✅ SOCKS5 (Recommended)
+- ✅ HTTP CONNECT
+
+---
+
+## 🔧 How It Works
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Target Process                                 │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐   │
+│  │  App Code    │───►│ Winsock API  │───►│  antigravity-proxy.dll   │   │
+│  │              │    │ (ws2_32.dll) │    │  (Hook Layer)            │   │
+│  └──────────────┘    └──────────────┘    └────────────┬─────────────┘   │
+│                                                       │                  │
+└───────────────────────────────────────────────────────│──────────────────┘
+                                                        ▼
+                                              ┌──────────────────┐
+                                              │   Proxy Server   │
+                                              │  (SOCKS5/HTTP)   │
+                                              └──────────────────┘
+```
+
+### Core Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. DLL Hijacking                                                         │
+│    Program loads version.dll → Loads our DLL → Forwards real calls      │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 2. Install API Hooks                                                     │
+│    Uses MinHook to intercept: connect, getaddrinfo, CreateProcessW, etc │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 3. DNS Interception                                                      │
+│    getaddrinfo("example.com") → Allocate FakeIP (10.0.0.x) → Save map   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 4. Connection Redirect                                                   │
+│    connect(10.0.0.x) → Lookup mapping → Connect to proxy → SOCKS5 shake │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 5. Child Process Propagation                                             │
+│    CreateProcessW → Suspend process → Inject DLL → Resume                │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Hooked APIs
+
+| API | Module | Purpose |
+|-----|--------|---------|
+| `connect` | ws2_32.dll | Intercept TCP connections |
+| `WSAConnect` | ws2_32.dll | Intercept WSA connections |
+| `getaddrinfo` | ws2_32.dll | Intercept DNS resolution (ANSI) |
+| `GetAddrInfoW` | ws2_32.dll | Intercept DNS resolution (Unicode) |
+| `WSAConnectByNameA/W` | ws2_32.dll | Intercept connect-by-name |
+| `ConnectEx` | ws2_32.dll | Intercept async connections |
+| `CreateProcessW` | kernel32.dll | Intercept process creation for injection |
+| `send/recv` | ws2_32.dll | Traffic monitoring (optional) |
+
+---
+
+## 🛠️ Build
+
+### Prerequisites
+
+Before building, make sure you have the following tools installed:
+
+| Dependency | Version | Purpose | Download |
+|------------|---------|---------|----------|
+| **Visual Studio 2022** | 2022 or later | C/C++ Compiler | [Download](https://visualstudio.microsoft.com/) |
+| **CMake** | >= 3.0 | Build System | [Download](https://cmake.org/download/) |
+| **PowerShell** | 5.0+ | Build Script | Built-in on Windows |
+
+> 💡 **Tip**: When installing Visual Studio, make sure to check the **"Desktop development with C++"** workload.
+
+### Dependencies
+
+| Dependency | Description | How to Get |
+|------------|-------------|------------|
+| **MinHook** | API Hook framework | Included in project |
+| **nlohmann/json** | JSON parsing library | Auto-downloaded by build script |
+
+### Quick Build
+
+The project provides a PowerShell build script for one-click building:
+
+```powershell
+# Default build: Release x64
+.\build.ps1
+
+# Build Debug version
+.\build.ps1 -Config Debug
+
+# Build 32-bit version
+.\build.ps1 -Arch x86
+
+# Clean and rebuild
+.\build.ps1 -Clean
+
+# Show help
+.\build.ps1 -Help
+```
+
+### Manual Build
+
+If you prefer manual building, use these commands:
+
+```bash
+# ========== x64 (64-bit) ==========
+mkdir build-x64 && cd build-x64
+
+# Configure (using Visual Studio 2022)
+cmake .. -G "Visual Studio 17 2022" -A x64
+
+# Build Release
+cmake --build . --config Release
+
+# Output: version.dll
+
+
+# ========== x86 (32-bit) ==========
+mkdir build-x86 && cd build-x86
+
+# Configure
+cmake .. -G "Visual Studio 17 2022" -A Win32
+
+# Build
+cmake --build . --config Release
+
+# Output: version.dll
+```
+
+### Common Build Errors
+
+<details>
+<summary><b>❌ Error: "CMake not found"</b></summary>
+
+**Cause**: CMake is not installed or not in PATH
+
+**Solution**:
+1. Download and install [CMake](https://cmake.org/download/)
+2. Check "Add CMake to the system PATH" during installation
+3. Restart terminal and retry
+</details>
+
+<details>
+<summary><b>❌ Error: "No CMAKE_CXX_COMPILER could be found"</b></summary>
+
+**Cause**: Visual Studio not installed or C++ toolchain missing
+
+**Solution**:
+1. Open Visual Studio Installer
+2. Make sure **"Desktop development with C++"** workload is installed
+3. Or run build commands from Developer Command Prompt
+</details>
+
+<details>
+<summary><b>❌ Error: nlohmann/json.hpp not found</b></summary>
+
+**Cause**: JSON library not downloaded
+
+**Solution**:
+Using `build.ps1` will auto-download, or manually download:
+```bash
+# Manual download
+curl -o include/nlohmann/json.hpp https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp
+```
+</details>
+
+<details>
+<summary><b>❌ Error: LNK2019 unresolved external symbol</b></summary>
+
+**Cause**: Linker error, usually Winsock library not linked
+
+**Solution**:
+Make sure CMakeLists.txt includes:
+```cmake
+target_link_libraries(version PRIVATE ws2_32)
+```
+</details>
+
+---
+
+## 📝 Usage
+
+### Quick Start
+
+**Just 3 steps to make your target application use proxy!**
+
+#### Step 1: Prepare Files
+
+After building, you'll get these files in the `output` directory:
+- `version.dll` - Proxy DLL
+- `config.json` - Configuration file
+
+#### Step 2: Configure Proxy
+
+Edit `config.json`:
+
+```json
+{
+    "proxy": {
+        "host": "127.0.0.1",
+        "port": 7890,
+        "type": "socks5"
+    },
+    "fake_ip": {
+        "enabled": true,
+        "cidr": "10.0.0.0/8"
+    },
+    "timeout": {
+        "connect": 5000,
+        "send": 5000,
+        "recv": 5000
+    },
+    "child_injection": true,
+    "target_processes": []
+}
+```
+
+#### Step 3: Deploy DLL
+
+Copy `version.dll` and `config.json` to the **same directory** as the target application:
+
+```
+Target Application Directory/
+├── target_app.exe
+├── version.dll      ← Put here
+└── config.json      ← Put here
+```
+
+Launch the target application, done! 🎉
+
+### Configuration Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `proxy.host` | string | `"127.0.0.1"` | Proxy server address |
+| `proxy.port` | int | `7890` | Proxy server port |
+| `proxy.type` | string | `"socks5"` | Proxy type: `socks5` or `http` |
+| `fake_ip.enabled` | bool | `true` | Enable FakeIP system |
+| `fake_ip.cidr` | string | `"10.0.0.0/8"` | FakeIP address range |
+| `timeout.connect` | int | `5000` | Connection timeout (ms) |
+| `timeout.send` | int | `5000` | Send timeout (ms) |
+| `timeout.recv` | int | `5000` | Receive timeout (ms) |
+| `child_injection` | bool | `true` | Inject into child processes |
+| `traffic_logging` | bool | `false` | Enable traffic logging |
+| `target_processes` | array | `[]` | Target process list (empty = all) |
+
+### Verification
+
+1. **Check logs**: Look for `proxy.log` in the target application directory
+2. **Check proxy software**: Observe connection logs in your proxy software
+3. **Use packet capture**: Use Wireshark to confirm traffic direction
+
+---
+
+## 🚀 Advanced Usage
+
+### 🎯 Force Proxy Other Programs
+
+Want Chrome, VS Code, or other programs to use proxy? Just modify the configuration!
+
+#### Example 1: Force Proxy Chrome
+
+```json
+{
+    "proxy": {
+        "host": "127.0.0.1",
+        "port": 7890,
+        "type": "socks5"
+    },
+    "child_injection": true,
+    "target_processes": []
+}
+```
+
+Then copy `version.dll` and `config.json` to Chrome's installation directory:
+
+```
+C:\Program Files\Google\Chrome\Application\
+├── chrome.exe
+├── version.dll      ← Put here
+└── config.json      ← Put here
+```
+
+#### Example 2: Force Proxy VS Code
+
+```
+C:\Users\YourUsername\AppData\Local\Programs\Microsoft VS Code\
+├── Code.exe
+├── version.dll      ← Put here
+└── config.json      ← Put here
+```
+
+#### Example 3: Proxy Only Specific Child Processes
+
+If you only want to proxy certain child processes, use the `target_processes` configuration:
+
+```json
+{
+    "target_processes": [
+        "node.exe",
+        "npm.cmd",
+        "language_server.exe"
+    ]
+}
+```
+
+### 🔧 Development Entry Points
+
+If you want to do secondary development based on this project, here are the key code locations:
+
+| Module | File | Description |
+|--------|------|-------------|
+| **Configuration** | `src/core/Config.hpp` | Modify config structure |
+| **Network Hooks** | `src/hooks/Hooks.cpp` | Add/modify hook functions |
+| **SOCKS5 Protocol** | `src/network/Socks5.hpp` | SOCKS5 handshake implementation |
+| **HTTP Protocol** | `src/network/HttpConnect.hpp` | HTTP CONNECT implementation |
+| **FakeIP** | `src/network/FakeIP.hpp` | Virtual IP allocation logic |
+| **DLL Hijacking** | `src/proxy/VersionProxy.cpp` | version.dll proxy forwarding |
+| **Process Injection** | `src/injection/ProcessInjector.hpp` | Child process injection logic |
+
+#### How to Add a New Hook?
+
+1. Define function pointer type and Detour function in `src/hooks/Hooks.cpp`
+2. Add `MH_CreateHookApi()` call in `Hooks::Install()`
+3. Handle cleanup in `Hooks::Uninstall()`
+
+#### How to Support a New Proxy Protocol?
+
+1. Create new protocol implementation in `src/network/` (refer to `Socks5.hpp`)
+2. Add protocol branch in `DoProxyHandshake()` in `src/hooks/Hooks.cpp`
+
+---
+
+## 📄 License
+
+This project is open-sourced under the [BSD-2-Clause License](LICENSE.txt).
+
+MinHook portion is copyrighted by **Tsuda Kageyu**.
+
+---
+
+## 👤 Author
+
+<table>
+  <tr>
+    <td align="center">
+      <b>煎饼果子（86）</b><br/>
+      <sub>Independent Developer</sub>
+    </td>
+  </tr>
+</table>
+
+### 📱 Contact
+
+| Platform | Info |
+|----------|------|
+| **WeChat** | JavaRookie666 |
+| **GitHub** | [@yuaotian](https://github.com/yuaotian) |
+
+### 🎁 Support
+
+If this project helps you, feel free to:
+- ⭐ Star this project
+- 🔗 Share with friends who need it
+- 💬 Submit Issues or PRs
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="img/wx_add_qr.png" alt="WeChat QR Code" width="200"/><br/>
+      <sub>Add WeChat</sub>
+    </td>
+    <td align="center">
+      <img src="img/wx_gzh_qr.jpg" alt="Official Account QR Code" width="200"/><br/>
+      <sub>Follow Official Account</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
+<p align="center">
+  <sub>Made with ❤️ by 煎饼果子（86）</sub>
+</p>
