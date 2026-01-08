@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        arch: [x64, x86]
+
+    steps:
+    - name: 检出仓库
+      uses: actions/checkout@v4
+
+    # 使用 build.ps1 统一编译逻辑，避免与本地流程偏差
+    - name: 执行编译脚本（Release）
+      shell: pwsh
+      run: .\build.ps1 -Config Release -Arch ${{ matrix.arch }}
+
+    # 打包 output 目录为 Release 资产
+    - name: 打包产物
+      id: package
+      shell: pwsh
+      run: |
+        $zipName = "antigravity-proxy-${{ github.ref_name }}-win-${{ matrix.arch }}.zip"
+        $zipPath = Join-Path $env:RUNNER_TEMP $zipName
+        if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+        Compress-Archive -Path "output/*" -DestinationPath $zipPath -Force
+        "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    # 上传 zip，供发布作业统一上传到 Release
+    - name: 上传打包文件
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-asset-${{ matrix.arch }}
+        path: ${{ steps.package.outputs.zip_path }}
+        if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - name: 下载打包文件
+      uses: actions/download-artifact@v4
+      with:
+        path: release-assets
+
+    # 创建/更新 Release，并上传打包产物与自动生成发布说明
+    - name: 发布 GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: release-assets/**/*.zip
+        generate_release_notes: true

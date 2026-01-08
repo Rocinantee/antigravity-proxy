@@ -12,33 +12,21 @@ jobs:
     
     strategy:
       matrix:
-        arch: [x64, Win32]
-        include:
-          - arch: x64
-            cmake_arch: x64
-            artifact_suffix: x64
-          - arch: Win32
-            cmake_arch: Win32
-            artifact_suffix: x32
+        arch: [x64, x86]
 
     steps:
-    - name: Checkout repository
+    - name: 检出仓库
       uses: actions/checkout@v4
 
-    - name: Download nlohmann/json
-      run: |
-        New-Item -ItemType Directory -Force -Path include/nlohmann
-        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp" -OutFile "include/nlohmann/json.hpp"
+    # 使用 build.ps1 统一编译逻辑，保持与本地流程一致
+    - name: 执行编译脚本（Release）
+      shell: pwsh
+      run: .\build.ps1 -Config Release -Arch ${{ matrix.arch }}
 
-    - name: Configure CMake
-      run: cmake -B build -G "Visual Studio 17 2022" -A ${{ matrix.cmake_arch }}
-
-    - name: Build
-      run: cmake --build build --config Release
-
-    - name: Upload Artifacts
+    # 上传 output 目录的产物，便于下载验证
+    - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
-        name: antigravity-proxy.${{ matrix.artifact_suffix }}
-        path: build/Release/antigravity-proxy.${{ matrix.artifact_suffix }}.dll
-        if-no-files-found: warn
+        name: antigravity-proxy-win-${{ matrix.arch }}
+        path: output/**
+        if-no-files-found: error
